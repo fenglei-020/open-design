@@ -37,12 +37,14 @@ import { captureChatArtifactSnapshotFromBytes } from '../chat-artifacts/capture.
 import { resolveChatArtifactQuota } from '../chat-artifacts/quota.js';
 import {
   HYPERFRAMES_SCAFFOLD_TOOL_ENDPOINT,
+  MOTION_REFERENCE_TOOL_ENDPOINT,
   STOCK_SEARCH_TOOL_ENDPOINT,
   MEDIA_TASK_WAIT_TOOL_ENDPOINT,
   type ToolTokenGrant,
 } from '../tool-tokens.js';
 import { associateLateRunProducedFile } from '../runtimes/run-produced-files.js';
 import { scaffoldHyperFramesComposition } from '../media/hyperframes-scaffold.js';
+import { buildMotionReference, MotionReferenceError } from '../media/motion-reference.js';
 import { assignMediaTaskBatches } from '../media/task-batches.js';
 import { mediaTaskErrorFromFailure } from '../media/task-error.js';
 import { normalizePersistedAutomationWorkspaceScope } from '../automations/workspace-scope.js';
@@ -1134,6 +1136,41 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
       if (code) body.code = code;
       res.status(status).json(body);
     }
+  });
+
+  // Motion reference pack: measure a user's reference video (attached file or
+  // link) into facts, frames and a contact sheet for replication.
+  const handleMotionReference = async (req: any, res: any, projectId: string) => {
+    const project = getProject(db, projectId);
+    if (!project) return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
+    const body = (req.body ?? {}) as { source?: unknown; id?: unknown };
+    if (typeof body.source !== 'string' || !body.source.trim()) {
+      return sendApiError(res, 400, 'BAD_REQUEST', 'source is required (a project file path or an http(s) link)');
+    }
+    try {
+      const result = await buildMotionReference({
+        projectDir: resolveProjectDir(PROJECTS_DIR, project.id, project.metadata),
+        source: body.source,
+        ...(typeof body.id === 'string' && body.id.trim() ? { id: body.id } : {}),
+      });
+      return res.status(201).json(result);
+    } catch (err: any) {
+      if (err instanceof MotionReferenceError) return sendApiError(res, err.code === 'BAD_REQUEST' ? 400 : 422, err.code, err.message);
+      return sendApiError(res, 500, 'MOTION_REFERENCE_FAILED', String(err?.message ?? err));
+    }
+  };
+
+  app.post('/api/projects/:id/media/motion-reference', async (req, res) => {
+    if (!isLocalSameOrigin(req, getResolvedPort())) return sendApiError(res, 403, 'FORBIDDEN', 'cross-origin request rejected');
+    if (!await ctx.authorizeProjectRequest(req, res, req.params.id, { mode: 'write', capability: 'writeFiles' })) return;
+    await handleMotionReference(req, res, req.params.id);
+  });
+
+  app.post(MOTION_REFERENCE_TOOL_ENDPOINT, async (req, res) => {
+    const grant = authorizeToolRequest(req, res, 'media:reference', { endpoint: MOTION_REFERENCE_TOOL_ENDPOINT });
+    if (!grant) return;
+    if (!await ctx.authorizeProjectToolRequest(res, grant.projectId, { mode: 'write', capability: 'writeFiles' })) return;
+    await handleMotionReference(req, res, grant.projectId);
   });
 
   app.post('/api/projects/:id/media/generate', async (req, res) => {

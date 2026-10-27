@@ -1264,6 +1264,10 @@ function printRootHelp() {
       Create a deterministic HyperFrames composition without npx or global
       skill installation, before dispatching it through media generate.
 
+  od media reference --source <file|link>
+      Measure a reference video (shot cuts, frames, contact sheet) before
+      replicating it as a Motion film.
+
   od media stock-search --slots '<json>'
       Download licensed Pexels / Pixabay photos for several image slots in one
       call (company service uses your existing Vela login).
@@ -1988,7 +1992,7 @@ async function runMedia(args) {
     printMediaHelp();
     return;
   }
-  if (sub !== 'generate' && sub !== 'wait' && sub !== 'scaffold' && sub !== 'stock-search' && sub !== 'models') {
+  if (sub !== 'generate' && sub !== 'wait' && sub !== 'scaffold' && sub !== 'stock-search' && sub !== 'models' && sub !== 'reference') {
     console.error(`unknown subcommand: od media ${sub}`);
     printMediaHelp();
     process.exit(1);
@@ -2013,7 +2017,56 @@ async function runMedia(args) {
   if (sub === 'wait') return runMediaWait(subArgs);
   if (sub === 'scaffold') return runMediaScaffold(subArgs);
   if (sub === 'stock-search') return runMediaStockSearch(subArgs);
+  if (sub === 'reference') return runMediaReference(subArgs);
   return runMediaGenerate(subArgs);
+}
+
+async function runMediaReference(rawArgs) {
+  let flags;
+  try {
+    flags = parseFlags(rawArgs, { string: ['daemon-url', 'project', 'source', 'id', 'workspace', 'workspace-member'], boolean: ['json', 'help', 'h'] });
+  } catch (err) {
+    console.error(err.message);
+    printMediaHelp();
+    process.exit(2);
+  }
+  if (flags.help || flags.h) { printMediaHelp(); return; }
+  const source = flags.source;
+  if (!source) {
+    console.error('--source required: a project file path (an attached video) or an http(s) link');
+    process.exit(2);
+  }
+  const daemonUrl = await cliDaemonUrl(flags);
+  const projectId = flags.project || process.env.OD_PROJECT_ID;
+  const token = process.env.OD_TOOL_TOKEN;
+  if (!projectId && !token) {
+    console.error('project id required. Pass --project <id> or set OD_PROJECT_ID.');
+    process.exit(2);
+  }
+  const url = token
+    ? `${daemonUrl.replace(/\/$/, '')}/api/tools/media/motion-reference`
+    : `${daemonUrl.replace(/\/$/, '')}/api/projects/${encodeURIComponent(projectId)}/media/motion-reference`;
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(token ? {} : workspaceHeadersFromExplicitFlags(flags) ?? {}),
+      },
+      body: JSON.stringify({ source, ...(flags.id ? { id: flags.id } : {}) }),
+    });
+  } catch (err) {
+    surfaceFetchError(err, daemonUrl);
+    process.exit(3);
+  }
+  const text = await resp.text();
+  if (!resp.ok) {
+    console.error(`daemon ${resp.status}: ${text}`);
+    process.exit(resp.status === 422 ? 5 : 4);
+  }
+  process.stdout.write(`${text.trim()}\n`);
 }
 
 async function runMediaStockSearch(rawArgs) {
@@ -2582,7 +2635,16 @@ function printMediaHelp() {
        od media scaffold --composition-dir .hyperframes-cache/<id> [opts]
        od media generate --surface <image|video|audio> --model <id> [opts]
        od media stock-search --slots '<json>' [opts]
+       od media reference --source <project-file|http(s)-link> [--id <id>]
        "$OD_NODE_BIN" "$OD_BIN" media generate --surface <image|video|audio> --model <id> [opts]
+
+Reference:
+  Measures a reference video for replication: copies an attached project file
+  (or downloads a link with yt-dlp when installed, else a direct video file
+  link) into .motion-reference/<id>/, and writes facts.json (duration, size,
+  fps, audio, shot cuts), one frame per shot under frames/ and contact.jpg.
+  Up to 200 MB and 180 s. Exit 5 means the link needs the user to upload the
+  file instead; the JSON error says why.
 
 Scaffold:
   Creates hyperframes.json, meta.json, and index.html without running
