@@ -299,48 +299,21 @@ sound. Silent films remain valid; never require audio for other task types.
 
 When the user attaches a video or gives a video link and asks to replicate it,
 make the same film, or make one "like this" (复刻, 同款, 照着这个做), the
-reference is the brief. Measure it before planning; never rebuild a film you
-have not seen or guess its timing from a description.
+reference is the brief. Never rebuild a film you have not measured.
 
 1. Measure it with the host:
    `"$OD_NODE_BIN" "$OD_BIN" media reference --project "$OD_PROJECT_ID" --source "<attached file path or link>"`.
-   It writes `.motion-reference/<id>/` with `facts.json` (duration, size, fps,
-   whether it has audio, shot cuts in seconds), a frame per shot and an even
-   grid under `frames/`, and `contact.jpg`. Exit code 5 means the link could
-   not be fetched (a login wall, a web page without a downloader, a live or
-   over-long video); tell the user the reason it printed and ask them to attach
-   the file. Do not continue from the page text or a thumbnail.
-2. Read `facts.json` and actually view `contact.jpg` and the frames. Build the
-   beat map from them: each beat's start and length come from the measured cuts
-   and frame times, and record what fills the frame, the exact copy, the
-   palette, the type, the motion mechanism and how each beat exits. Take the
-   duration, aspect and fps from `facts.json` unless the user asked otherwise.
-3. Decide the fidelity from the request. "Replicate this" means rebuild the
-   reference as it is: the same beats, timing, copy, composition, palette and
-   motion. When the user also asks for changes ("with my brand", "change the
-   headline to …"), keep the reference's form and feel and swap only the
-   content they named; an adapted film does not carry the reference's words,
-   logo, footage or people unless the user asks to keep them.
-4. Author it as editable source, the way an Open Design Motion template is
-   built, so a later "change this element" is a one-place edit: keep the total
-   duration, every beat's length and the key event times in the one
-   configuration (`duration`, `scenes: [{ id, dur }]`, `cues: [{ id, scene, at }]`,
-   each scene starting where the previous one ends); put copy, colours and
-   image paths a user would swap in that configuration; give every element a
-   user might point at (headline, logo, product image, price, figure) a
-   `data-od-id`. Rebuild everything in HTML, SVG or Canvas. Never put the
-   reference video, or a whole reference frame as a backdrop, into the film; a
-   still from it (a logo, a product shot) goes in only when the user says it is
-   theirs or asks to keep it.
-5. Sound follows "Plan and produce sound for video" above, unchanged. Reuse the
-   reference's own soundtrack only when the user explicitly asks for it (for
-   example "use the original music"): extract it with ffmpeg into the
-   composition's `assets/`, pre-trimmed to the film's length, and declare it
-   like any other track. `facts.json` says whether the reference has audio.
-6. In the bounded video check below, compare the render with the reference at
-   the same moments (opening, the key transformation, the ending) — beat
-   timing, composition, palette, type and the state of the motion — and use
-   the one targeted repair on the largest difference.
+   It writes `.motion-reference/<id>/`: `facts.json` (duration, size, fps,
+   audio, shot cuts), `frames/`, `contact.jpg`, and `REPLICATE.md` — the
+   replication rules. Exit code 5 means the link could not be fetched; tell the
+   user the reason it printed and ask them to attach the file. Do not continue
+   from page text or a thumbnail.
+2. Read `REPLICATE.md` and follow it: it governs timing, fidelity, editable
+   structure, pictures, type and the reference comparison for this film. It is
+   the same rule set Open Design's official templates are replicated with.
+3. Everything else in this skill still applies: the composition contract,
+   sound policy ("Plan and produce sound for video"), production and the
+   bounded video check, where the comparison in `REPLICATE.md` is the review.
 
 References longer than 180 seconds or larger than 200 MB are refused; ask the
 user to trim the part they want.

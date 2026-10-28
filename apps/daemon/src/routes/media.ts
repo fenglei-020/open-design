@@ -45,6 +45,7 @@ import {
 import { associateLateRunProducedFile } from '../runtimes/run-produced-files.js';
 import { scaffoldHyperFramesComposition } from '../media/hyperframes-scaffold.js';
 import { buildMotionReference, MotionReferenceError } from '../media/motion-reference.js';
+import path from 'node:path';
 import { assignMediaTaskBatches } from '../media/task-batches.js';
 import { mediaTaskErrorFromFailure } from '../media/task-error.js';
 import { normalizePersistedAutomationWorkspaceScope } from '../automations/workspace-scope.js';
@@ -1151,6 +1152,8 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
       const result = await buildMotionReference({
         projectDir: resolveProjectDir(PROJECTS_DIR, project.id, project.metadata),
         source: body.source,
+        toolsDir: path.join(RUNTIME_DATA_DIR, 'tools'),
+        rulesFile: path.join(ctx.paths.SKILLS_DIR, 'motion-design', 'references', 'replicate.md'),
         ...(typeof body.id === 'string' && body.id.trim() ? { id: body.id } : {}),
       });
       return res.status(201).json(result);

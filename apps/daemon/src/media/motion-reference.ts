@@ -3,7 +3,8 @@
 // duration, size, fps, audio presence, shot cuts, a frame at every shot and a
 // contact sheet. The agent reads these files; nothing here interprets the film.
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { resolveYtDlp } from './yt-dlp.js';
 import { createWriteStream } from 'node:fs';
 import { copyFile, lstat, mkdir, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -39,6 +40,8 @@ export interface MotionReferenceResult {
   frames: MotionReferenceFrame[];
   contactSheet: string;
   facts: string;
+  /** The shared replication rules, copied beside the measurements for the agent to read. */
+  rules: string | null;
 }
 
 function ffmpegPath(): string {
@@ -118,16 +121,8 @@ export function pickFrameTimes(cuts: number[], durationSec: number): number[] {
   return Array.from({ length: MAX_FRAMES }, (_, i) => spaced[Math.round(i * step)]!);
 }
 
-function ytDlpPath(): string | null {
-  const configured = process.env.OD_YTDLP_PATH?.trim();
-  if (configured) return configured;
-  const found = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['yt-dlp'], { encoding: 'utf8' });
-  const first = found.status === 0 ? found.stdout.split(/\r?\n/)[0]?.trim() : '';
-  return first || null;
-}
-
-async function downloadUrl(url: string, dir: string): Promise<string> {
-  const ytdlp = ytDlpPath();
+async function downloadUrl(url: string, dir: string, toolsDir: string | null): Promise<string> {
+  const ytdlp = await resolveYtDlp(toolsDir);
   if (ytdlp) {
     const out = path.join(dir, 'reference.%(ext)s');
     const result = await run(ytdlp, [
@@ -175,7 +170,7 @@ async function resolveProjectFile(projectDir: string, source: string): Promise<s
   return target;
 }
 
-export async function buildMotionReference(input: { projectDir: string; source: string; id?: string }): Promise<MotionReferenceResult> {
+export async function buildMotionReference(input: { projectDir: string; source: string; id?: string; toolsDir?: string; rulesFile?: string }): Promise<MotionReferenceResult> {
   const source = input.source?.trim();
   if (!source) throw new MotionReferenceError('BAD_REQUEST', 'source is required (a project file path or an http(s) link)');
   const id = input.id?.trim() || `ref-${Date.now().toString(36)}`;
@@ -190,7 +185,7 @@ export async function buildMotionReference(input: { projectDir: string; source: 
 
   const isUrl = /^https?:\/\//i.test(source);
   let video: string;
-  if (isUrl) video = await downloadUrl(source, dir);
+  if (isUrl) video = await downloadUrl(source, dir, input.toolsDir ?? null);
   else {
     const file = await resolveProjectFile(projectDir, source);
     video = path.join(dir, `reference${path.extname(file).toLowerCase() || '.mp4'}`);
@@ -230,8 +225,13 @@ export async function buildMotionReference(input: { projectDir: string; source: 
     frames,
     contactSheet: path.posix.join(relDir, 'contact.jpg'),
     facts: path.posix.join(relDir, 'facts.json'),
+    rules: null,
   };
   delete (result as any).hasVideo;
+  if (input.rulesFile && (await stat(input.rulesFile).catch(() => null))?.isFile()) {
+    await copyFile(input.rulesFile, path.join(dir, 'REPLICATE.md'));
+    result.rules = path.posix.join(relDir, 'REPLICATE.md');
+  }
   await writeFile(path.join(dir, 'facts.json'), `${JSON.stringify(result, null, 2)}\n`);
   return result;
 }
