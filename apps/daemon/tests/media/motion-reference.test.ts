@@ -87,6 +87,17 @@ describe('buildMotionReference', () => {
     const facts = JSON.parse(await readFile(path.join(project, r.facts), 'utf8'));
     expect(facts.cuts).toEqual(r.cuts);
     expect((await readFile(path.join(project, r.contactSheet))).length).toBeGreaterThan(1000);
+    expect(r.audio).toBe('.motion-reference/a/audio.wav');
+    expect((await readFile(path.join(project, r.audio!))).length).toBeGreaterThan(100_000);
+  });
+
+  it('leaves audio empty for a silent reference', async () => {
+    const silent = spawnSync(ffmpegInstaller.path, ['-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'lavfi', '-i', 'color=c=green:s=320x180:d=2:r=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', path.join(project, 'silent.mp4')]);
+    expect(silent.status).toBe(0);
+    const r = await buildMotionReference({ projectDir: project, source: 'silent.mp4', id: 'g' });
+    expect(r.hasAudio).toBe(false);
+    expect(r.audio).toBeNull();
   });
 
   it('downloads a direct video link without a downloader', async () => {

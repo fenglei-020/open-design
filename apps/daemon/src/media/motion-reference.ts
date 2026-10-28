@@ -39,6 +39,8 @@ export interface MotionReferenceResult {
   cuts: number[];
   frames: MotionReferenceFrame[];
   contactSheet: string;
+  /** The reference's own soundtrack as a WAV, ready to copy into a composition; null when it has none. */
+  audio: string | null;
   facts: string;
   /** The shared replication rules, copied beside the measurements for the agent to read. */
   rules: string | null;
@@ -211,6 +213,15 @@ export async function buildMotionReference(input: { projectDir: string; source: 
   }
   if (!frames.length) throw new MotionReferenceError('PROBE_FAILED', 'Could not read frames from the video.');
 
+  // Keep the reference's soundtrack beside the frames. Replication reuses it by
+  // default; extracting it here means the agent never has to touch the video.
+  let audio: string | null = null;
+  if (probe.hasAudio) {
+    const out = path.join(dir, 'audio.wav');
+    const pulled = await run(ff, ['-hide_banner', '-loglevel', 'error', '-y', '-i', video, '-vn', '-ac', '2', '-ar', '44100', '-c:a', 'pcm_s16le', out], 120_000);
+    if (pulled.code === 0 && (await stat(out).catch(() => null))?.size) audio = path.posix.join(relDir, 'audio.wav');
+  }
+
   const columns = Math.min(4, frames.length), rows = Math.ceil(frames.length / columns);
   const contact = path.join(dir, 'contact.jpg');
   await run(ff, ['-hide_banner', '-loglevel', 'error', '-y', '-i', path.join(dir, 'frames', 'frame-%02d.jpg'),
@@ -224,6 +235,7 @@ export async function buildMotionReference(input: { projectDir: string; source: 
     cuts,
     frames,
     contactSheet: path.posix.join(relDir, 'contact.jpg'),
+    audio,
     facts: path.posix.join(relDir, 'facts.json'),
     rules: null,
   };
